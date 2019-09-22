@@ -2,6 +2,7 @@ use clap::{App, Arg};
 use failure::Error;
 use std::fs;
 
+mod codegen;
 mod grammer;
 mod parser;
 
@@ -37,6 +38,8 @@ fn main() -> Result<(), Error> {
     let utf8 = std::str::from_utf8(&source).expect("Unable to parse source as UTF-8");
 
     let parsed = parser::parse(&input_filename, &utf8).unwrap().1;
+
+    let output = parsed.iter().map(|f| codegen::run(f));
 
     Ok(())
 }

@@ -1,5 +1,5 @@
 use nom::{
-    branch::alt, bytes::complete::tag, character::complete::*, combinator::*, multi::*,
+    branch::alt, bytes::complete::{tag, tag_no_case}, character::complete::*, combinator::*, multi::*,
     sequence::*, IResult,
 };
 use std::str::FromStr;
@@ -8,7 +8,28 @@ use nom_locate::{position, LocatedSpanEx};
 
 use crate::grammer::*;
 
-type Span<'a> = LocatedSpanEx<&'a str, &'a str>;
+pub type Span<'a> = LocatedSpanEx<&'a str, &'a str>;
+
+fn register(i: Span) -> IResult<Span, Reg> {
+    alt((
+        value(Reg::Rax, tag_no_case("rax")),
+        value(Reg::Rcx, tag_no_case("rcx")),
+        value(Reg::Rdx, tag_no_case("rdx")),
+        value(Reg::Rbx, tag_no_case("rbx")),
+        value(Reg::Rsp, tag_no_case("Rsp")),
+        value(Reg::Rbp, tag_no_case("Rbp")),
+        value(Reg::Rsi, tag_no_case("rsi")),
+        value(Reg::Rdi, tag_no_case("rdi")),
+        value(Reg::R8, tag_no_case("r8")),
+        value(Reg::R9, tag_no_case("r9")),
+        value(Reg::R10, tag_no_case("r10")),
+        value(Reg::R11, tag_no_case("r11")),
+        value(Reg::R12, tag_no_case("r12")),
+        value(Reg::R13, tag_no_case("r13")),
+        value(Reg::R14, tag_no_case("r14")),
+        value(Reg::R15, tag_no_case("r15")),
+    ))(i)
+}
 
 fn variable(i: Span) -> IResult<Span, &str> {
     map(
@@ -25,10 +46,8 @@ fn variable_list(i: Span) -> IResult<Span, Vec<&str>> {
     separated_list(tag(","), variable)(i)
 }
 
-fn working_set(i: Span) -> IResult<Span, Vec<&str>> {
-    map(opt(delimited(tag("["), variable_list, tag("]"))), |o| {
-        o.unwrap_or(Vec::new())
-    })(i)
+fn working_set(i: Span) -> IResult<Span, Vec<Reg>> {
+    delimited(tag("["), separated_list(tag(","), delimited(multispace0, register, multispace0)), tag("]"))(i)
 }
 
 fn expr(i: Span) -> IResult<Span, Expr> {
@@ -56,7 +75,7 @@ fn expr(i: Span) -> IResult<Span, Expr> {
 fn assignment(i: Span) -> IResult<Span, Statement> {
     map(
         tuple((working_set, variable, tag("="), expr, tag(";"))),
-        |(working_set, output, _, computation, _)| Statement::Assigment {
+        |(working_set, output, _, computation, _)| Statement::Assignment {
             working_set,
             output,
             computation,
@@ -72,7 +91,7 @@ fn if_statement(i: Span) -> IResult<Span, Statement> {
             tag("if"),
             multispace1,
             expr,
-            delimited(tag("{"), many0(statement), tag("}")),
+            delimited(tag("{"), many0(tuple((position, statement))), tag("}")),
         )),
         |(working_set, _, _, _, condition, body)| Statement::If {
             working_set,
@@ -107,18 +126,20 @@ fn function(i: Span) -> IResult<Span, Function> {
     map(
         tuple((
             multispace0,
+            position,
             tag("fn"),
             multispace1,
             alphanumeric1,
             multispace0,
             delimited(tag("("), variable_list, tag(")")),
             multispace0,
-            delimited(tag("{"), many0(statement), tag("}")),
+            delimited(tag("{"), many0(tuple((position, statement))), tag("}")),
         )),
-        |(_, _, _, name, _, arguments, _, body)| Function {
+        |(_, span, _, _, name, _, arguments, _, body)| Function {
             name: name.fragment,
             arguments,
             body,
+            span,
         },
     )(i)
 }
